@@ -161,6 +161,8 @@
     <string name="basic_size">尺寸: %dx%d</string>
     <string name="basic_seed">种子: %s</string>
     <string name="basic_runtime">运行: %s</string>
+    <string name="basic_mode">模式: %s</string>
+    <string name="basic_denoise">降噪强度: %.2f</string>
     <string name="basic_time">耗时: %s</string>
     <string name="opencl_warning">GPU运行时警告：每个分辨率的首次运行会比较慢，这会生成缓存文件。后续运行会快一些。</string>
 
@@ -274,4 +276,44 @@
     <string name="resolution">分辨率</string>
     <string name="scheduler">调度器</string>
     <string name="extracting">解压中…</string>
+
+    <!-- History migration -->
+    <string name="migration_title">正在导入历史记录</string>
+    <string name="migration_subtitle">首次启动需要导入旧版本的历史记录,导入完成后会自动进入主界面,请稍候。</string>
+    <string name="migration_progress">%1$d / %2$d</string>
+    <string name="migration_current_model">当前模型: %1$s</string>
+    <string name="migration_failed_title">导入失败</string>
+    <string name="migration_retry">重试</string>
+    <string name="migration_skip">跳过</string>
+    <string name="migration_skip_warning">跳过后旧的历史记录将无法在新的历史浏览中查看。</string>
+
+    <!-- History filter -->
+    <string name="history_filter_title">过滤条件</string>
+    <string name="history_filter_apply">应用</string>
+    <string name="history_filter_reset">重置</string>
+    <string name="history_filter_models">模型</string>
+    <string name="history_filter_current_model_only">仅当前模型</string>
+    <string name="history_filter_all_models">所有模型</string>
+    <string name="history_filter_all">全部</string>
+    <string name="history_filter_modes">模式</string>
+    <string name="history_filter_mode_txt2img">文生图</string>
+    <string name="history_filter_mode_img2img">图生图</string>
+    <string name="history_filter_mode_inpaint">局部重绘</string>
+    <string name="history_filter_mode_unknown">未知</string>
+    <string name="history_filter_only_upscaled">仅超分图</string>
+    <string name="history_filter_time_range">时间范围</string>
+    <string name="history_filter_time_any">不限</string>
+    <string name="history_filter_size">尺寸</string>
+    <string name="history_filter_scheduler">调度器</string>
+    <string name="history_filter_device">设备</string>
+    <string name="history_filter_device_npu">NPU</string>
+    <string name="history_filter_device_cpu">CPU</string>
+    <string name="history_filter_device_gpu">GPU</string>
+    <string name="history_filter_prompt_search">提示词包含…</string>
+    <string name="history_filter_sort">排序</string>
+    <string name="history_filter_sort_desc">最新优先</string>
+    <string name="history_filter_sort_asc">最旧优先</string>
+    <string name="history_view_filter">过滤</string>
+    <string name="history_empty_filter">没有符合过滤条件的历史记录。</string>
+    <string name="history_count">共 %1$d 张</string>
 </resources>

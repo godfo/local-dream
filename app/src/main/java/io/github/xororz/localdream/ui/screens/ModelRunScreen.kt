@@ -104,7 +104,6 @@ import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
@@ -118,7 +117,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -127,6 +125,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -151,6 +150,8 @@ import io.github.xororz.localdream.BuildConfig
 import io.github.xororz.localdream.R
 import io.github.xororz.localdream.data.DownloadProgress
 import io.github.xororz.localdream.data.GenerationPreferences
+import io.github.xororz.localdream.data.GenerationMode
+import io.github.xororz.localdream.data.HistoryFilter
 import io.github.xororz.localdream.data.HistoryItem
 import io.github.xororz.localdream.data.HistoryManager
 import io.github.xororz.localdream.data.ModelRepository
@@ -306,7 +307,8 @@ data class GenerationParameters(
     val runOnCpu: Boolean,
     val denoiseStrength: Float = 0.6f,
     val useOpenCL: Boolean = false,
-    val scheduler: String = "dpm"
+    val scheduler: String = "dpm",
+    val mode: GenerationMode = GenerationMode.UNKNOWN,
 )
 
 @SuppressLint("DefaultLocale")
@@ -341,8 +343,18 @@ fun ModelRunScreen(
     var generationParams by remember { mutableStateOf<GenerationParameters?>(null) }
 
     // History state
-    val historyItems = remember { mutableStateListOf<HistoryItem>() }
-    var isLoadingHistory by remember { mutableStateOf(false) }
+    var historyFilter by remember(modelId) {
+        mutableStateOf(HistoryFilter(modelIds = setOf(modelId)))
+    }
+    val historyFlow = remember(historyFilter) { historyManager.observe(historyFilter) }
+    val historyItems by historyFlow.collectAsState(initial = emptyList())
+    val knownModelIds by remember { historyManager.observeKnownModelIds() }
+        .collectAsState(initial = emptyList())
+    val knownSchedulers by remember { historyManager.observeKnownSchedulers() }
+        .collectAsState(initial = emptyList())
+    val knownSizes by remember { historyManager.observeKnownSizes() }
+        .collectAsState(initial = emptyList())
+    var showHistoryFilterSheet by remember { mutableStateOf(false) }
     var selectedHistoryItem by remember { mutableStateOf<HistoryItem?>(null) }
     var showHistoryDetailDialog by remember { mutableStateOf(false) }
     var showHistoryParametersDialog by remember { mutableStateOf(false) }
@@ -960,26 +972,6 @@ fun ModelRunScreen(
         }
     }
 
-    // Load history when entering the screen
-    LaunchedEffect(modelId) {
-        if (historyItems.isEmpty() && !isLoadingHistory) {
-            isLoadingHistory = true
-            try {
-                val items = historyManager.loadHistoryForModel(modelId)
-                historyItems.clear()
-                historyItems.addAll(items)
-            } catch (e: Exception) {
-                Log.e(
-                    "ModelRunScreen",
-                    "Failed to load history",
-                    e
-                )
-            } finally {
-                isLoadingHistory = false
-            }
-        }
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             cleanup()
@@ -1037,6 +1029,12 @@ fun ModelRunScreen(
                         }
                     }
 
+                    val currentGenerationMode = when {
+                        isInpaintMode -> GenerationMode.INPAINT
+                        selectedImageUri != null -> GenerationMode.IMG2IMG
+                        else -> GenerationMode.TXT2IMG
+                    }
+
                     val newParams = GenerationParameters(
                         steps = generationParamsTmp.steps,
                         cfg = generationParamsTmp.cfg,
@@ -1047,8 +1045,10 @@ fun ModelRunScreen(
                         width = if (model?.runOnCpu == true) generationParamsTmp.width else currentWidth,
                         height = if (model?.runOnCpu == true) generationParamsTmp.height else currentHeight,
                         runOnCpu = model?.runOnCpu ?: false,
+                        denoiseStrength = generationParamsTmp.denoiseStrength,
                         useOpenCL = generationParamsTmp.useOpenCL,
-                        scheduler = generationParamsTmp.scheduler
+                        scheduler = generationParamsTmp.scheduler,
+                        mode = currentGenerationMode,
                     )
 
                     // Save to disk and update history list
@@ -1056,14 +1056,11 @@ fun ModelRunScreen(
                         val savedItem = historyManager.saveGeneratedImage(
                             modelId = modelId,
                             bitmap = state.bitmap,
-                            params = newParams
+                            params = newParams,
+                            mode = currentGenerationMode,
                         )
-                        // Add to history list for immediate UI update
-                        if (savedItem != null) {
-                            withContext(Dispatchers.Main) {
-                                historyItems.add(0, savedItem)
-                            }
-                        }
+                        // History list updates automatically via the Flow
+                        // observed in HistoryManager.observe(filter).
                     }
 
                     currentBitmap = state.bitmap
@@ -2398,29 +2395,7 @@ fun ModelRunScreen(
                                                         )
                                                     if (bitmap != null) {
                                                         currentBitmap = bitmap
-                                                        scope.launch {
-                                                            val params =
-                                                                item.params
-                                                                    ?: historyManager.loadHistoryItemParams(
-                                                                        item
-                                                                    )
-                                                            generationParams =
-                                                                params
-                                                            if (item.params == null && params != null) {
-                                                                val newItem =
-                                                                    item.copy(
-                                                                        params = params
-                                                                    )
-                                                                val index =
-                                                                    historyItems.indexOf(
-                                                                        item
-                                                                    )
-                                                                if (index != -1) {
-                                                                    historyItems[index] =
-                                                                        newItem
-                                                                }
-                                                            }
-                                                        }
+                                                        generationParams = item.params
                                                         imageVersion++
                                                     }
                                                 },
@@ -2625,6 +2600,23 @@ fun ModelRunScreen(
                                     }",
                                     style = MaterialTheme.typography.bodyMedium
                                 )
+                                generationParams?.mode?.let { m ->
+                                    if (m != GenerationMode.UNKNOWN) {
+                                        Text(
+                                            stringResource(R.string.basic_mode, m.name.lowercase()),
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        if (m != GenerationMode.TXT2IMG) {
+                                            Text(
+                                                stringResource(
+                                                    R.string.basic_denoise,
+                                                    generationParams?.denoiseStrength ?: 0.6f
+                                                ),
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                    }
+                                }
                                 Text(
                                     stringResource(
                                         R.string.basic_time,
@@ -2721,30 +2713,36 @@ fun ModelRunScreen(
             selectedItems.clear()
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            if (isLoadingHistory) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
-            } else if (historyItems.isEmpty()) {
-                var emptyVisible by remember { mutableStateOf(false) }
-                LaunchedEffect(Unit) { emptyVisible = true }
-                AnimatedVisibility(
-                    visible = emptyVisible,
-                    enter = fadeIn(animationSpec = tween(500)) + scaleIn(
-                        initialScale = 0.9f,
-                        animationSpec = tween(500)
-                    ),
-                    modifier = Modifier.fillMaxSize()
-                ) {
+            HistoryFilterBar(
+                filter = historyFilter,
+                currentModelId = modelId,
+                onShowFilterSheet = { showHistoryFilterSheet = true },
+                onSetCurrentModelOnly = {
+                    historyFilter = historyFilter.copy(modelIds = setOf(modelId))
+                },
+                onSetAllModels = {
+                    historyFilter = historyFilter.copy(modelIds = null)
+                },
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+            ) {
+                if (historyItems.isEmpty()) {
+                    var emptyVisible by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { emptyVisible = true }
+                    val emptyAlpha by animateFloatAsState(
+                        targetValue = if (emptyVisible) 1f else 0f,
+                        animationSpec = tween(500),
+                        label = "emptyAlpha",
+                    )
                     Box(
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .alpha(emptyAlpha),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
@@ -2770,132 +2768,132 @@ fun ModelRunScreen(
                             )
                         }
                     }
-                }
-            } else {
-                androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-                    columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(
-                        2
-                    ),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        16.dp
-                    ),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    items(historyItems.size) { index ->
-                        val item = historyItems[index]
-                        val isSelected = selectedItems.contains(item)
-                        Card(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .combinedClickable(
-                                    onClick = {
-                                        if (isSelectionMode) {
-                                            // Toggle selection
-                                            if (isSelected) {
-                                                selectedItems.remove(item)
-                                                if (selectedItems.isEmpty()) {
-                                                    isSelectionMode = false
+                } else {
+                    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Fixed(
+                            2
+                        ),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            16.dp
+                        ),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(historyItems.size) { index ->
+                            val item = historyItems[index]
+                            val isSelected = selectedItems.contains(item)
+                            Card(
+                                modifier = Modifier
+                                    .aspectRatio(1f)
+                                    .combinedClickable(
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                // Toggle selection
+                                                if (isSelected) {
+                                                    selectedItems.remove(item)
+                                                    if (selectedItems.isEmpty()) {
+                                                        isSelectionMode = false
+                                                    }
+                                                } else {
+                                                    selectedItems.add(item)
                                                 }
                                             } else {
+                                                // Normal preview
+                                                selectedHistoryItem = item
+                                                showHistoryDetailDialog = true
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                isSelectionMode = true
+                                                selectedItems.clear()
                                                 selectedItems.add(item)
                                             }
-                                        } else {
-                                            // Normal preview
-                                            selectedHistoryItem = item
-                                            showHistoryDetailDialog = true
                                         }
-                                    },
-                                    onLongClick = {
-                                        if (!isSelectionMode) {
-                                            isSelectionMode = true
-                                            selectedItems.clear()
-                                            selectedItems.add(item)
-                                        }
-                                    }
-                                ),
-                            shape = MaterialTheme.shapes.medium,
-                            elevation = CardDefaults.cardElevation(
-                                defaultElevation = 2.dp
-                            )
-                        ) {
-                            Box {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(item.imageFile)
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = "Generated image",
-                                    modifier = Modifier.fillMaxSize()
-                                )
-
-                                if (isSelected) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                MaterialTheme.colorScheme.primary.copy(
-                                                    alpha = 0.2f
-                                                )
-                                            )
-                                    )
-                                }
-
-                                // Timestamp overlay
-                                Surface(
-                                    modifier = Modifier.align(Alignment.BottomStart),
-                                    shape = RoundedCornerShape(
-                                        topStart = 0.dp,
-                                        topEnd = 4.dp,
-                                        bottomStart = 12.dp,
-                                        bottomEnd = 0.dp
                                     ),
-                                    color = MaterialTheme.colorScheme.surface.copy(
-                                        alpha = 0.8f
+                                shape = MaterialTheme.shapes.medium,
+                                elevation = CardDefaults.cardElevation(
+                                    defaultElevation = 2.dp
+                                )
+                            ) {
+                                Box {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(item.imageFile)
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = "Generated image",
+                                        modifier = Modifier.fillMaxSize()
                                     )
-                                ) {
-                                    Text(
-                                        text = java.text.SimpleDateFormat(
-                                            "MM/dd HH:mm",
-                                            java.util.Locale.getDefault()
-                                        )
-                                            .format(java.util.Date(item.timestamp)),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier.padding(
-                                            horizontal = 6.dp,
-                                            vertical = 3.dp
-                                        )
-                                    )
-                                }
 
-                                // Selection indicator
-                                if (isSelectionMode) {
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(8.dp)
-                                            .size(24.dp)
-                                            .background(
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(
-                                                    alpha = 0.3f
-                                                ),
-                                                shape = CircleShape
-                                            )
-                                            .border(
-                                                width = 2.dp,
-                                                color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
-                                                shape = CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(
+                                                    MaterialTheme.colorScheme.primary.copy(
+                                                        alpha = 0.2f
+                                                    )
+                                                )
+                                        )
+                                    }
+
+                                    // Timestamp overlay
+                                    Surface(
+                                        modifier = Modifier.align(Alignment.BottomStart),
+                                        shape = RoundedCornerShape(
+                                            topStart = 0.dp,
+                                            topEnd = 4.dp,
+                                            bottomStart = 12.dp,
+                                            bottomEnd = 0.dp
+                                        ),
+                                        color = MaterialTheme.colorScheme.surface.copy(
+                                            alpha = 0.8f
+                                        )
                                     ) {
-                                        if (isSelected) {
-                                            Icon(
-                                                imageVector = Icons.Default.Check,
-                                                contentDescription = "Selected",
-                                                tint = MaterialTheme.colorScheme.onPrimary,
-                                                modifier = Modifier.size(16.dp)
+                                        Text(
+                                            text = java.text.SimpleDateFormat(
+                                                "MM/dd HH:mm",
+                                                java.util.Locale.getDefault()
                                             )
+                                                .format(java.util.Date(item.timestamp)),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.padding(
+                                                horizontal = 6.dp,
+                                                vertical = 3.dp
+                                            )
+                                        )
+                                    }
+
+                                    // Selection indicator
+                                    if (isSelectionMode) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(8.dp)
+                                                .size(24.dp)
+                                                .background(
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Black.copy(
+                                                        alpha = 0.3f
+                                                    ),
+                                                    shape = CircleShape
+                                                )
+                                                .border(
+                                                    width = 2.dp,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.White,
+                                                    shape = CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (isSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -2903,92 +2901,92 @@ fun ModelRunScreen(
                         }
                     }
                 }
-            }
 
-            // Floating selection mode bottom bar
-            if (isSelectionMode) {
-                ElevatedCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    shape = MaterialTheme.shapes.extraLarge,
-                    elevation = CardDefaults.elevatedCardElevation(
-                        defaultElevation = 6.dp
-                    )
-                ) {
-                    Row(
+                // Floating selection mode bottom bar
+                if (isSelectionMode) {
+                    ElevatedCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = {
-                                isSelectionMode = false
-                                selectedItems.clear()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Exit selection mode"
-                            )
-                        }
-
-                        Text(
-                            text = stringResource(
-                                R.string.selected_items_count,
-                                selectedItems.size
-                            ),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            .align(Alignment.BottomCenter)
+                            .padding(16.dp),
+                        shape = MaterialTheme.shapes.extraLarge,
+                        elevation = CardDefaults.elevatedCardElevation(
+                            defaultElevation = 6.dp
                         )
-
+                    ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Select all / Deselect all button
-                            val visibleCount = historyItems.size
-                            val visibleItems = historyItems
-                            val isAllSelected =
-                                selectedItems.size == visibleCount && visibleItems.all { it in selectedItems }
                             IconButton(
                                 onClick = {
-                                    if (isAllSelected) {
-                                        selectedItems.clear()
-                                        isSelectionMode = false
-                                    } else {
-                                        selectedItems.clear()
-                                        selectedItems.addAll(visibleItems)
-                                    }
+                                    isSelectionMode = false
+                                    selectedItems.clear()
                                 }
                             ) {
                                 Icon(
-                                    imageVector = if (isAllSelected)
-                                        Icons.Default.CheckCircle
-                                    else
-                                        Icons.Default.CheckCircleOutline,
-                                    contentDescription = if (isAllSelected) "Deselect all" else "Select all",
-                                    tint = MaterialTheme.colorScheme.primary
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Exit selection mode"
                                 )
                             }
 
-                            // Delete button
-                            IconButton(
-                                onClick = { showBatchDeleteDialog = true },
-                                enabled = selectedItems.isNotEmpty()
+                            Text(
+                                text = stringResource(
+                                    R.string.selected_items_count,
+                                    selectedItems.size
+                                ),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete selected",
-                                    tint = if (selectedItems.isNotEmpty())
-                                        MaterialTheme.colorScheme.error
-                                    else
-                                        MaterialTheme.colorScheme.onSurface.copy(
-                                            alpha = 0.38f
-                                        )
-                                )
+                                // Select all / Deselect all button
+                                val visibleCount = historyItems.size
+                                val visibleItems = historyItems
+                                val isAllSelected =
+                                    selectedItems.size == visibleCount && visibleItems.all { it in selectedItems }
+                                IconButton(
+                                    onClick = {
+                                        if (isAllSelected) {
+                                            selectedItems.clear()
+                                            isSelectionMode = false
+                                        } else {
+                                            selectedItems.clear()
+                                            selectedItems.addAll(visibleItems)
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (isAllSelected)
+                                            Icons.Default.CheckCircle
+                                        else
+                                            Icons.Default.CheckCircleOutline,
+                                        contentDescription = if (isAllSelected) "Deselect all" else "Select all",
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                // Delete button
+                                IconButton(
+                                    onClick = { showBatchDeleteDialog = true },
+                                    enabled = selectedItems.isNotEmpty()
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Delete selected",
+                                        tint = if (selectedItems.isNotEmpty())
+                                            MaterialTheme.colorScheme.error
+                                        else
+                                            MaterialTheme.colorScheme.onSurface.copy(
+                                                alpha = 0.38f
+                                            )
+                                    )
+                                }
                             }
                         }
                     }
@@ -3371,70 +3369,29 @@ fun ModelRunScreen(
                                     upscalerId = selectedUpscaler.id
                                 )
 
-                                // Save upscaled image as new JPG file
+                                // Save upscaled image via HistoryManager (DB + JPG file)
                                 generationParams?.let { params ->
                                     scope.launch(Dispatchers.IO) {
                                         try {
-                                            val timestamp = System.currentTimeMillis()
-                                            val historyDir =
-                                                File(context.filesDir, "history/$modelId")
-                                            historyDir.mkdirs()
-
-                                            // Save as JPG
-                                            val imageFile =
-                                                File(historyDir, "$timestamp.jpg")
-                                            java.io.FileOutputStream(imageFile).use { out ->
-                                                upscaledBitmap.compress(
-                                                    Bitmap.CompressFormat.JPEG,
-                                                    95,
-                                                    out
-                                                )
-                                            }
-
-                                            // Save parameters JSON
-                                            val updatedParams =
-                                                params.copy(
-                                                    width = upscaledBitmap.width,
-                                                    height = upscaledBitmap.height
-                                                )
-                                            val jsonFile =
-                                                File(historyDir, "$timestamp.json")
-                                            val jsonObject = org.json.JSONObject().apply {
-                                                put("steps", updatedParams.steps)
-                                                put("cfg", updatedParams.cfg)
-                                                put("seed", updatedParams.seed)
-                                                put("prompt", updatedParams.prompt)
-                                                put(
-                                                    "negativePrompt",
-                                                    updatedParams.negativePrompt
-                                                )
-                                                put(
-                                                    "generationTime",
-                                                    updatedParams.generationTime
-                                                )
-                                                put("width", updatedParams.width)
-                                                put("height", updatedParams.height)
-                                                put("runOnCpu", updatedParams.runOnCpu)
-                                                put(
-                                                    "denoiseStrength",
-                                                    updatedParams.denoiseStrength
-                                                )
-                                                put("useOpenCL", updatedParams.useOpenCL)
-                                                put("timestamp", timestamp)
-                                            }
-                                            jsonFile.writeText(jsonObject.toString())
-
-                                            // Add new upscaled image to history list
-                                            val newHistoryItem = HistoryItem(
-                                                imageFile = imageFile,
-                                                params = updatedParams,
-                                                timestamp = timestamp
+                                            val updatedParams = params.copy(
+                                                width = upscaledBitmap.width,
+                                                height = upscaledBitmap.height,
                                             )
-                                            withContext(Dispatchers.Main) {
-                                                currentBitmap = upscaledBitmap
-                                                generationParams = updatedParams
-                                                imageVersion++
-                                                historyItems.add(0, newHistoryItem)
+                                            val sourceMode = selectedHistoryItem?.mode
+                                                ?: GenerationMode.UNKNOWN
+                                            val saved = historyManager.saveGeneratedImage(
+                                                modelId = modelId,
+                                                bitmap = upscaledBitmap,
+                                                params = updatedParams,
+                                                mode = sourceMode,
+                                                upscalerId = selectedUpscaler.id,
+                                            )
+                                            if (saved != null) {
+                                                withContext(Dispatchers.Main) {
+                                                    currentBitmap = upscaledBitmap
+                                                    generationParams = updatedParams
+                                                    imageVersion++
+                                                }
                                             }
                                         } catch (e: Exception) {
                                             Log.e(
@@ -3528,6 +3485,20 @@ fun ModelRunScreen(
                 )
             }
         }
+    }
+
+    if (showHistoryFilterSheet) {
+        HistoryFilterSheet(
+            initialFilter = historyFilter,
+            knownModelIds = knownModelIds,
+            knownSchedulers = knownSchedulers,
+            knownSizes = knownSizes,
+            onApply = {
+                historyFilter = it
+                showHistoryFilterSheet = false
+            },
+            onDismiss = { showHistoryFilterSheet = false },
+        )
     }
 
     // History detail dialog
@@ -3638,25 +3609,7 @@ fun ModelRunScreen(
                         )
                         .clickable {
                             if (selectedHistoryItem != null) {
-                                scope.launch {
-                                    if (selectedHistoryItem!!.params == null) {
-                                        val params =
-                                            historyManager.loadHistoryItemParams(
-                                                selectedHistoryItem!!
-                                            )
-                                        if (params != null) {
-                                            val newItem =
-                                                selectedHistoryItem!!.copy(params = params)
-                                            val index =
-                                                historyItems.indexOf(selectedHistoryItem!!)
-                                            if (index != -1) {
-                                                historyItems[index] = newItem
-                                            }
-                                            selectedHistoryItem = newItem
-                                        }
-                                    }
-                                    showHistoryParametersDialog = true
-                                }
+                                showHistoryParametersDialog = true
                             }
                         },
                     contentAlignment = Alignment.Center
@@ -3791,6 +3744,22 @@ fun ModelRunScreen(
                                 }",
                                 style = MaterialTheme.typography.bodyMedium
                             )
+                            val itemMode = selectedHistoryItem?.mode ?: params.mode
+                            if (itemMode != GenerationMode.UNKNOWN) {
+                                Text(
+                                    stringResource(R.string.basic_mode, itemMode.name.lowercase()),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                if (itemMode != GenerationMode.TXT2IMG) {
+                                    Text(
+                                        stringResource(
+                                            R.string.basic_denoise,
+                                            params.denoiseStrength
+                                        ),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+                            }
                             Text(
                                 stringResource(
                                     R.string.basic_time,
@@ -3968,11 +3937,9 @@ fun ModelRunScreen(
                     onClick = {
                         scope.launch {
                             val success = historyManager.deleteHistoryItem(
-                                modelId = modelId,
-                                historyItem = selectedHistoryItem!!
+                                item = selectedHistoryItem!!
                             )
                             if (success) {
-                                historyItems.remove(selectedHistoryItem)
                                 showDeleteHistoryDialog = false
                                 showHistoryDetailDialog = false
                                 selectedHistoryItem = null
@@ -4021,11 +3988,9 @@ fun ModelRunScreen(
 
                             itemsToDelete.forEach { item ->
                                 val success = historyManager.deleteHistoryItem(
-                                    modelId = modelId,
-                                    historyItem = item
+                                    item = item
                                 )
                                 if (success) {
-                                    historyItems.remove(item)
                                     successCount++
                                 } else {
                                     failCount++

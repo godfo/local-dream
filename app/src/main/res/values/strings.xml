@@ -161,6 +161,8 @@
     <string name="basic_size">Size: %dx%d</string>
     <string name="basic_seed">Seed: %s</string>
     <string name="basic_runtime">Runtime: %s</string>
+    <string name="basic_mode">Mode: %s</string>
+    <string name="basic_denoise">Denoise strength: %.2f</string>
     <string name="basic_time">Time: %s</string>
     <string name="opencl_warning">GPU runtime warning: The first run at each resolution will be slow as it generates cache files. Subsequent runs will be much faster.</string>
 
@@ -274,4 +276,44 @@
     <string name="resolution">Resolution</string>
     <string name="scheduler">Scheduler</string>
     <string name="extracting">Extracting…</string>
+
+    <!-- History migration -->
+    <string name="migration_title">Importing history</string>
+    <string name="migration_subtitle">First launch needs to import your existing history records. Please keep the app open until this finishes.</string>
+    <string name="migration_progress">%1$d / %2$d</string>
+    <string name="migration_current_model">Current model: %1$s</string>
+    <string name="migration_failed_title">Import failed</string>
+    <string name="migration_retry">Retry</string>
+    <string name="migration_skip">Skip</string>
+    <string name="migration_skip_warning">Skipping will leave old history records unavailable in the new history view.</string>
+
+    <!-- History filter -->
+    <string name="history_filter_title">Filters</string>
+    <string name="history_filter_apply">Apply</string>
+    <string name="history_filter_reset">Reset</string>
+    <string name="history_filter_models">Models</string>
+    <string name="history_filter_current_model_only">Current model only</string>
+    <string name="history_filter_all_models">All models</string>
+    <string name="history_filter_all">All</string>
+    <string name="history_filter_modes">Modes</string>
+    <string name="history_filter_mode_txt2img">Text to image</string>
+    <string name="history_filter_mode_img2img">Image to image</string>
+    <string name="history_filter_mode_inpaint">Inpaint</string>
+    <string name="history_filter_mode_unknown">Unknown</string>
+    <string name="history_filter_only_upscaled">Upscaled only</string>
+    <string name="history_filter_time_range">Time range</string>
+    <string name="history_filter_time_any">Any time</string>
+    <string name="history_filter_size">Size</string>
+    <string name="history_filter_scheduler">Scheduler</string>
+    <string name="history_filter_device">Device</string>
+    <string name="history_filter_device_npu">NPU</string>
+    <string name="history_filter_device_cpu">CPU</string>
+    <string name="history_filter_device_gpu">GPU</string>
+    <string name="history_filter_prompt_search">Prompt contains…</string>
+    <string name="history_filter_sort">Sort</string>
+    <string name="history_filter_sort_desc">Newest first</string>
+    <string name="history_filter_sort_asc">Oldest first</string>
+    <string name="history_view_filter">Filter</string>
+    <string name="history_empty_filter">No history matches the filters.</string>
+    <string name="history_count">%1$d items</string>
 </resources>
