@@ -474,9 +474,21 @@ fun ModelRunScreen(
     var savedPathHistory by remember { mutableStateOf<List<PathData>?>(null) }
     var cropRect by remember { mutableStateOf<AndroidRect?>(null) }
 
+    // True only when selectedImageUri points to a real source image from the gallery picker.
+    // False when img2img was seeded from a result/history bitmap (selectedImageUri is a
+    // synthetic tmp.txt path that holds base64, not a decodable image).
+    var hasOriginalImageForStitch by remember { mutableStateOf(false) }
+
     var snapshotIsInpaintMode by remember { mutableStateOf(false) }
     var snapshotSelectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var snapshotCropRect by remember { mutableStateOf<AndroidRect?>(null) }
+    var snapshotHasOriginalImage by remember { mutableStateOf(false) }
+    // History-item id of the just-completed inpaint generation, compared against
+    // currentDisplayedHistoryId so saving only stitches when the bitmap on screen
+    // really is that generation (regardless of whether it's the original Bitmap
+    // object or a fresh decode from clicking the thumbnail again).
+    var snapshotHistoryItemId by remember { mutableStateOf<Long?>(null) }
+    var currentDisplayedHistoryId by remember { mutableStateOf<Long?>(null) }
 
     var saveAllJob: Job? by remember { mutableStateOf(null) }
     var batchGenerationJob: Job? by remember { mutableStateOf(null) }
@@ -688,6 +700,7 @@ fun ModelRunScreen(
         imageUriForCrop = null
         croppedBitmap = bitmap
         cropRect = rect
+        hasOriginalImageForStitch = true
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -701,6 +714,7 @@ fun ModelRunScreen(
                     selectedImageUri = null
                     croppedBitmap = null
                     cropRect = null
+                    hasOriginalImageForStitch = false
                 }
             }
         }
@@ -760,6 +774,7 @@ fun ModelRunScreen(
                 croppedBitmap = resized
                 cropRect = AndroidRect(0, 0, resized.width, resized.height)
                 selectedImageUri = Uri.fromFile(File(context.filesDir, "tmp.txt"))
+                hasOriginalImageForStitch = false
                 base64EncodeDone = true
                 true
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -774,6 +789,7 @@ fun ModelRunScreen(
                 selectedImageUri = null
                 croppedBitmap = null
                 cropRect = null
+                hasOriginalImageForStitch = false
                 false
             }
 
@@ -864,8 +880,21 @@ fun ModelRunScreen(
             return
         }
 
+        // Only stitch when:
+        //  - the image currently shown is the most recent inpaint generation (matched
+        //    via history-item id, so clicking another thumbnail and back still works
+        //    while clicks on unrelated thumbnails or upscaled results don't stitch), and
+        //  - the source img2img/inpaint image was a real gallery image with a decodable
+        //    URI (not a synthetic tmp.txt from sendBitmapToImg2img).
+        val shouldStitch = snapshotIsInpaintMode &&
+                snapshotCropRect != null &&
+                snapshotSelectedImageUri != null &&
+                snapshotHasOriginalImage &&
+                snapshotHistoryItemId != null &&
+                currentDisplayedHistoryId == snapshotHistoryItemId
+
         coroutineScope.launch {
-            if (snapshotIsInpaintMode && snapshotCropRect != null && snapshotSelectedImageUri != null) {
+            if (shouldStitch) {
                 withContext(Dispatchers.IO) {
                     var originalBitmap: Bitmap? = null
                     var mutableOriginal: Bitmap? = null
@@ -1106,7 +1135,10 @@ fun ModelRunScreen(
                         mode = currentGenerationMode,
                     )
 
-                    // Save to disk and update history list
+                    // Save to disk and update history list. The saved item's id is
+                    // forwarded to both the snapshot and the currently-displayed marker
+                    // so handleSaveImage can later confirm the user is still looking at
+                    // this generation (and not a different history thumbnail).
                     coroutineScope.launch(Dispatchers.IO) {
                         val savedItem = historyManager.saveGeneratedImage(
                             modelId = modelId,
@@ -1114,8 +1146,12 @@ fun ModelRunScreen(
                             params = newParams,
                             mode = currentGenerationMode,
                         )
-                        // History list updates automatically via the Flow
-                        // observed in HistoryManager.observe(filter).
+                        if (savedItem != null) {
+                            withContext(Dispatchers.Main) {
+                                snapshotHistoryItemId = savedItem.id
+                                currentDisplayedHistoryId = savedItem.id
+                            }
+                        }
                     }
 
                     currentBitmap = state.bitmap
@@ -1125,6 +1161,11 @@ fun ModelRunScreen(
                     snapshotIsInpaintMode = isInpaintMode
                     snapshotSelectedImageUri = selectedImageUri
                     snapshotCropRect = cropRect
+                    snapshotHasOriginalImage = hasOriginalImageForStitch
+                    // snapshotHistoryItemId / currentDisplayedHistoryId are set once
+                    // the DB save above resolves.
+                    snapshotHistoryItemId = null
+                    currentDisplayedHistoryId = null
 
                     Log.d(
                         "ModelRunScreen",
@@ -1240,6 +1281,7 @@ fun ModelRunScreen(
                                 cropRect = null
                                 savedPathHistory = null
                                 base64EncodeDone = false
+                                hasOriginalImageForStitch = false
                             }
 
                             currentWidth = resolution.width
@@ -2120,6 +2162,7 @@ fun ModelRunScreen(
                                         isInpaintMode = false
                                         cropRect = null
                                         savedPathHistory = null
+                                        hasOriginalImageForStitch = false
                                     },
                                     modifier = Modifier
                                         .size(24.dp)
@@ -2451,6 +2494,7 @@ fun ModelRunScreen(
                                                     if (bitmap != null) {
                                                         currentBitmap = bitmap
                                                         generationParams = item.params
+                                                        currentDisplayedHistoryId = item.id
                                                         imageVersion++
                                                     }
                                                 },
@@ -3178,6 +3222,7 @@ fun ModelRunScreen(
                     showCropScreen = false
                     imageUriForCrop = null
                     selectedImageUri = null
+                    hasOriginalImageForStitch = false
                 }
             )
         }
@@ -3445,6 +3490,7 @@ fun ModelRunScreen(
                                                 withContext(Dispatchers.Main) {
                                                     currentBitmap = upscaledBitmap
                                                     generationParams = updatedParams
+                                                    currentDisplayedHistoryId = saved.id
                                                     imageVersion++
                                                 }
                                             }
