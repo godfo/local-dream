@@ -19,7 +19,8 @@ class DPMSolverMultistepScheduler : public Scheduler {
                               float beta_end, const std::string &beta_schedule,
                               int solver_order,
                               const std::string &prediction_type,
-                              const std::string &timestep_spacing)
+                              const std::string &timestep_spacing,
+                              bool use_karras_sigmas = false)
       : num_train_timesteps_(num_train_timesteps),
         beta_start_(beta_start),
         beta_end_(beta_end),
@@ -27,6 +28,7 @@ class DPMSolverMultistepScheduler : public Scheduler {
         solver_order_(solver_order),
         prediction_type_(prediction_type),
         timestep_spacing_(timestep_spacing),
+        use_karras_sigmas_(use_karras_sigmas),
         lower_order_final_(true) {
     if (beta_schedule == "scaled_linear") {
       float beta_start_sqrt = std::sqrt(beta_start_);
@@ -58,22 +60,38 @@ class DPMSolverMultistepScheduler : public Scheduler {
   void set_timesteps(int num_inference_steps) override {
     num_inference_steps_ = num_inference_steps;
 
-    if (timestep_spacing_ == "leading") {
+    xt::xarray<float> base_sigmas =
+        xt::pow((1.0f - alphas_cumprod_) / alphas_cumprod_, 0.5f);
+    xt::xarray<float> log_sigmas = xt::log(base_sigmas);
+
+    if (use_karras_sigmas_) {
+      xt::xarray<float> reversed = xt::flip(base_sigmas, 0);
+      xt::xarray<float> karras_sigmas =
+          _convert_to_karras(reversed, num_inference_steps);
+
+      timesteps_ = xt::zeros<float>({karras_sigmas.size()});
+      for (size_t i = 0; i < karras_sigmas.size(); ++i) {
+        timesteps_(i) = std::round(_sigma_to_t(karras_sigmas(i), log_sigmas));
+      }
+
+      sigmas_ = xt::concatenate(
+          std::make_tuple(karras_sigmas, xt::zeros<float>({1})));
+    } else if (timestep_spacing_ == "leading") {
       int step_ratio = num_train_timesteps_ / (num_inference_steps + 1);
       xt::xarray<int> steps = xt::cast<int>(xt::round(
           xt::arange<float>(0, num_inference_steps + 1) * float(step_ratio)));
       timesteps_ = xt::view(xt::flip(steps, 0), xt::range(0, steps.size() - 1));
+
+      xt::xarray<float> selected_sigmas = xt::zeros<float>({timesteps_.size()});
+      for (size_t i = 0; i < timesteps_.size(); ++i) {
+        size_t idx = size_t(timesteps_(i));
+        selected_sigmas(i) = base_sigmas(idx);
+      }
+      sigmas_ = xt::concatenate(
+          std::make_tuple(selected_sigmas, xt::zeros<float>({1})));
     } else {
       throw std::runtime_error(timestep_spacing_ + " is not supported");
     }
-
-    xt::xarray<float> selected_sigmas = xt::zeros<float>({timesteps_.size()});
-    for (size_t i = 0; i < timesteps_.size(); ++i) {
-      size_t idx = size_t(timesteps_(i));
-      selected_sigmas(i) = sigmas_(idx);
-    }
-    sigmas_ = xt::concatenate(
-        std::make_tuple(selected_sigmas, xt::zeros<float>({1})));
 
     model_outputs_.clear();
     model_outputs_.resize(solver_order_);
@@ -83,6 +101,45 @@ class DPMSolverMultistepScheduler : public Scheduler {
     lower_order_nums_ = 0;
     step_index_ = std::nullopt;
     begin_index_ = std::nullopt;
+  }
+
+  xt::xarray<float> _convert_to_karras(const xt::xarray<float> &in_sigmas,
+                                       int num_inference_steps) const {
+    float sigma_min = in_sigmas(in_sigmas.size() - 1);
+    float sigma_max = in_sigmas(0);
+
+    const float rho = 7.0f;
+    xt::xarray<float> ramp =
+        xt::linspace<float>(0.0f, 1.0f, num_inference_steps);
+    float min_inv_rho = std::pow(sigma_min, 1.0f / rho);
+    float max_inv_rho = std::pow(sigma_max, 1.0f / rho);
+    return xt::pow(max_inv_rho + ramp * (min_inv_rho - max_inv_rho), rho);
+  }
+
+  float _sigma_to_t(float sigma, const xt::xarray<float> &log_sigmas) const {
+    float log_sigma = std::log(std::max(sigma, 1e-10f));
+    int n = int(log_sigmas.size());
+
+    // log_sigmas is ascending: find the largest i where log_sigmas[i] <=
+    // log_sigma. Matches Python's argmax-of-cumsum-of-(dists>=0) on a monotonic
+    // array.
+    int low_idx = 0;
+    for (int i = 0; i < n; ++i) {
+      if (log_sigmas(i) <= log_sigma) {
+        low_idx = i;
+      }
+    }
+    if (low_idx > n - 2) low_idx = n - 2;
+    int high_idx = low_idx + 1;
+
+    float low = log_sigmas(low_idx);
+    float high = log_sigmas(high_idx);
+
+    float w = (low - log_sigma) / (low - high);
+    if (w < 0.0f) w = 0.0f;
+    if (w > 1.0f) w = 1.0f;
+
+    return (1.0f - w) * float(low_idx) + w * float(high_idx);
   }
 
   std::tuple<float, float> _sigma_to_alpha_sigma_t(float sigma) const {
@@ -330,6 +387,7 @@ class DPMSolverMultistepScheduler : public Scheduler {
   int solver_order_;
   std::string prediction_type_;
   std::string timestep_spacing_;
+  bool use_karras_sigmas_;
   bool lower_order_final_;
 
   xt::xarray<float> betas_;

@@ -60,8 +60,12 @@ import java.util.Locale
 
 private fun schedulerDisplayName(id: String): String = when (id) {
     "dpm" -> "DPM++ 2M"
+    "dpm_karras" -> "DPM++ 2M Karras"
     "euler_a" -> "Euler A"
+    "euler_a_karras" -> "Euler A Karras"
     "lcm" -> "LCM"
+    "euler" -> "Euler"
+    "euler_karras" -> "Euler Karras"
     else -> id
 }
 

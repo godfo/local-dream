@@ -1631,6 +1631,14 @@ fun ModelRunScreen(
                                                         label = { Text("DPM++ 2M") }
                                                     )
                                                     FilterChip(
+                                                        selected = scheduler == "dpm_karras",
+                                                        onClick = {
+                                                            scheduler = "dpm_karras"
+                                                            saveAllFields()
+                                                        },
+                                                        label = { Text("DPM++ 2M Karras") }
+                                                    )
+                                                    FilterChip(
                                                         selected = scheduler == "euler_a",
                                                         onClick = {
                                                             scheduler = "euler_a"
@@ -1639,12 +1647,36 @@ fun ModelRunScreen(
                                                         label = { Text("Euler A") }
                                                     )
                                                     FilterChip(
+                                                        selected = scheduler == "euler_a_karras",
+                                                        onClick = {
+                                                            scheduler = "euler_a_karras"
+                                                            saveAllFields()
+                                                        },
+                                                        label = { Text("Euler A Karras") }
+                                                    )
+                                                    FilterChip(
                                                         selected = scheduler == "lcm",
                                                         onClick = {
                                                             scheduler = "lcm"
                                                             saveAllFields()
                                                         },
                                                         label = { Text("LCM") }
+                                                    )
+                                                    FilterChip(
+                                                        selected = scheduler == "euler",
+                                                        onClick = {
+                                                            scheduler = "euler"
+                                                            saveAllFields()
+                                                        },
+                                                        label = { Text("Euler") }
+                                                    )
+                                                    FilterChip(
+                                                        selected = scheduler == "euler_karras",
+                                                        onClick = {
+                                                            scheduler = "euler_karras"
+                                                            saveAllFields()
+                                                        },
+                                                        label = { Text("Euler Karras") }
                                                     )
                                                 }
                                             }
@@ -2777,8 +2809,12 @@ fun ModelRunScreen(
                                     "${stringResource(R.string.scheduler)}: ${
                                         when (generationParams?.scheduler) {
                                             "dpm" -> "DPM++ 2M"
+                                            "dpm_karras" -> "DPM++ 2M Karras"
                                             "euler_a" -> "Euler A"
+                                            "euler_a_karras" -> "Euler A Karras"
                                             "lcm" -> "LCM"
+                                            "euler" -> "Euler"
+                                            "euler_karras" -> "Euler Karras"
                                             else -> generationParams?.scheduler ?: "DPM++ 2M"
                                         }
                                     }",
@@ -3961,8 +3997,12 @@ fun ModelRunScreen(
                                 "${stringResource(R.string.scheduler)}: ${
                                     when (params.scheduler) {
                                         "dpm" -> "DPM++ 2M"
+                                        "dpm_karras" -> "DPM++ 2M Karras"
                                         "euler_a" -> "Euler A"
+                                        "euler_a_karras" -> "Euler A Karras"
                                         "lcm" -> "LCM"
+                                        "euler" -> "Euler"
+                                        "euler_karras" -> "Euler Karras"
                                         else -> params.scheduler
                                     }
                                 }",
@@ -4413,8 +4453,12 @@ fun ModelRunScreen(
                     ParamShareField.SEED -> source.seed?.toString()
                     ParamShareField.SCHEDULER -> when (source.scheduler) {
                         "dpm" -> "DPM++ 2M"
+                        "dpm_karras" -> "DPM++ 2M Karras"
                         "euler_a" -> "Euler A"
+                        "euler_a_karras" -> "Euler A Karras"
                         "lcm" -> "LCM"
+                        "euler" -> "Euler"
+                        "euler_karras" -> "Euler Karras"
                         else -> source.scheduler
                     }
 
