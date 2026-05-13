@@ -2012,6 +2012,12 @@ GenerationResult generateImage(
       scheduler = std::make_unique<LCMScheduler>(1000, 0.00085f, 0.012f,
                                                  "scaled_linear", "epsilon", 50,
                                                  10.0f, true, false);
+    } else if (scheduler_type == "dpm_sde" ||
+               scheduler_type == "dpm_sde_karras") {
+      bool use_karras = (scheduler_type == "dpm_sde_karras");
+      scheduler = std::make_unique<DPMSolverMultistepScheduler>(
+          1000, 0.00085f, 0.012f, "scaled_linear", 2, "epsilon", "leading",
+          use_karras, "sde-dpmsolver++");
     } else {
       // Default to DPM solver; "dpm_karras" enables Karras sigma schedule.
       bool use_karras = (scheduler_type == "dpm_karras");

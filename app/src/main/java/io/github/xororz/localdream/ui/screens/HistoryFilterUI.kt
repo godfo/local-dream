@@ -66,6 +66,8 @@ private fun schedulerDisplayName(id: String): String = when (id) {
     "lcm" -> "LCM"
     "euler" -> "Euler"
     "euler_karras" -> "Euler Karras"
+    "dpm_sde" -> "DPM++ 2M SDE"
+    "dpm_sde_karras" -> "DPM++ 2M SDE Karras"
     else -> id
 }
 
@@ -146,6 +148,7 @@ fun HistoryFilterSheet(
     var showDatePicker by remember { mutableStateOf(false) }
     var showModelPicker by remember { mutableStateOf(false) }
     var showSizePicker by remember { mutableStateOf(false) }
+    var showSchedulerPicker by remember { mutableStateOf(false) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -244,20 +247,12 @@ fun HistoryFilterSheet(
 
             if (knownSchedulers.isNotEmpty()) {
                 Section(stringResource(R.string.history_filter_scheduler)) {
-                    ChipRow {
-                        knownSchedulers.forEach { s ->
-                            val selected = draft.schedulers?.contains(s) == true
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    val current = draft.schedulers ?: emptySet()
-                                    val next = if (selected) current - s else current + s
-                                    draft = draft.copy(schedulers = next.ifEmpty { null })
-                                },
-                                label = { Text(schedulerDisplayName(s)) },
-                            )
-                        }
-                    }
+                    AssistChip(
+                        onClick = { showSchedulerPicker = true },
+                        label = {
+                            Text(summaryLabel(draft.schedulers, knownSchedulers.size))
+                        },
+                    )
                 }
             }
 
@@ -380,6 +375,22 @@ fun HistoryFilterSheet(
             },
         )
     }
+
+    if (showSchedulerPicker) {
+        MultiSelectDialog(
+            title = stringResource(R.string.history_filter_scheduler),
+            allItems = knownSchedulers,
+            initiallySelected = draft.schedulers ?: knownSchedulers.toSet(),
+            itemLabel = { schedulerDisplayName(it) },
+            onDismiss = { showSchedulerPicker = false },
+            onConfirm = { selected ->
+                draft = draft.copy(
+                    schedulers = if (selected.size == knownSchedulers.size) null else selected.ifEmpty { null }
+                )
+                showSchedulerPicker = false
+            },
+        )
+    }
 }
 
 @Composable
@@ -398,6 +409,7 @@ private fun MultiSelectDialog(
     initiallySelected: Set<String>,
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
+    itemLabel: (String) -> String = { it },
 ) {
     var selected by remember { mutableStateOf(initiallySelected) }
     Dialog(onDismissRequest = onDismiss) {
@@ -452,7 +464,7 @@ private fun MultiSelectDialog(
                                 },
                             )
                             Text(
-                                text = item,
+                                text = itemLabel(item),
                                 style = MaterialTheme.typography.bodyLarge,
                             )
                         }

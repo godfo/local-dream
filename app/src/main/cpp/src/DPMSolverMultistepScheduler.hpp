@@ -20,7 +20,8 @@ class DPMSolverMultistepScheduler : public Scheduler {
                               int solver_order,
                               const std::string &prediction_type,
                               const std::string &timestep_spacing,
-                              bool use_karras_sigmas = false)
+                              bool use_karras_sigmas = false,
+                              const std::string &algorithm_type = "dpmsolver++")
       : num_train_timesteps_(num_train_timesteps),
         beta_start_(beta_start),
         beta_end_(beta_end),
@@ -29,7 +30,13 @@ class DPMSolverMultistepScheduler : public Scheduler {
         prediction_type_(prediction_type),
         timestep_spacing_(timestep_spacing),
         use_karras_sigmas_(use_karras_sigmas),
+        algorithm_type_(algorithm_type),
         lower_order_final_(true) {
+    if (algorithm_type_ != "dpmsolver++" &&
+        algorithm_type_ != "sde-dpmsolver++") {
+      throw std::runtime_error("Unsupported algorithm_type: " +
+                               algorithm_type_);
+    }
     if (beta_schedule == "scaled_linear") {
       float beta_start_sqrt = std::sqrt(beta_start_);
       float beta_end_sqrt = std::sqrt(beta_end_);
@@ -186,6 +193,17 @@ class DPMSolverMultistepScheduler : public Scheduler {
     float lambda_s = std::log(alpha_s) - std::log(sigma_s_val);
     float h = lambda_t - lambda_s;
 
+    if (algorithm_type_ == "sde-dpmsolver++") {
+      float one_minus_exp_neg_2h = 1.0f - std::exp(-2.0f * h);
+      xt::xarray<float> noise =
+          xt::random::randn<float>(model_output.shape(), 0.0f, 1.0f,
+                                   xt::random::get_default_random_engine());
+      return (sigma_t_val / sigma_s_val * std::exp(-h)) * sample +
+             (alpha_t * one_minus_exp_neg_2h) * model_output +
+             (sigma_t_val * std::sqrt(std::max(one_minus_exp_neg_2h, 0.0f))) *
+                 noise;
+    }
+
     return (sigma_t_val / sigma_s_val) * sample -
            alpha_t * (std::exp(-h) - 1.0f) * model_output;
   }
@@ -214,6 +232,17 @@ class DPMSolverMultistepScheduler : public Scheduler {
 
     xt::xarray<float> D0 = m0;
     xt::xarray<float> D1 = (1.0f / r0) * (m0 - m1);
+
+    if (algorithm_type_ == "sde-dpmsolver++") {
+      float one_minus_exp_neg_2h = 1.0f - std::exp(-2.0f * h);
+      xt::xarray<float> noise = xt::random::randn<float>(
+          sample.shape(), 0.0f, 1.0f, xt::random::get_default_random_engine());
+      return (sigma_t_val / sigma_s0_val * std::exp(-h)) * sample +
+             (alpha_t * one_minus_exp_neg_2h) * D0 +
+             (0.5f * alpha_t * one_minus_exp_neg_2h) * D1 +
+             (sigma_t_val * std::sqrt(std::max(one_minus_exp_neg_2h, 0.0f))) *
+                 noise;
+    }
 
     return (sigma_t_val / sigma_s0_val) * sample -
            (alpha_t * (std::exp(-h) - 1.0f)) * D0 -
@@ -290,20 +319,24 @@ class DPMSolverMultistepScheduler : public Scheduler {
         convert_model_output(model_output, sample);
 
     for (int i = 0; i < solver_order_ - 1; ++i) {
-      model_outputs_[i] = model_outputs_[i + 1];
+      model_outputs_[i] = std::move(model_outputs_[i + 1]);
     }
-    model_outputs_.back() = converted_output;
+    model_outputs_.back() = std::move(converted_output);
 
-    bool lower_order_final =
-        (step_index_.value() == int(timesteps_.size()) - 1) ||
-        (lower_order_final_ && timesteps_.size() < 15);
+    // Match diffusers: at the last step always fall back to first-order,
+    // because our sigmas array ends in 0 (equivalent to
+    // final_sigmas_type="zero"). The previous `||` form was a bug — when
+    // timesteps.size() < 15 it silently degraded *every* step to first-order.
+    bool is_last_step = (step_index_.value() == int(timesteps_.size()) - 1);
+    bool lower_order_final = is_last_step;
     bool lower_order_second =
         (step_index_.value() == int(timesteps_.size()) - 2) &&
         lower_order_final_ && timesteps_.size() < 15;
 
     xt::xarray<float> prev_sample;
     if (solver_order_ == 1 || lower_order_nums_ < 1 || lower_order_final) {
-      prev_sample = dpm_solver_first_order_update(converted_output, sample);
+      prev_sample =
+          dpm_solver_first_order_update(model_outputs_.back(), sample);
     } else if (solver_order_ == 2 || lower_order_nums_ < 2 ||
                lower_order_second) {
       prev_sample =
@@ -388,6 +421,7 @@ class DPMSolverMultistepScheduler : public Scheduler {
   std::string prediction_type_;
   std::string timestep_spacing_;
   bool use_karras_sigmas_;
+  std::string algorithm_type_;
   bool lower_order_final_;
 
   xt::xarray<float> betas_;

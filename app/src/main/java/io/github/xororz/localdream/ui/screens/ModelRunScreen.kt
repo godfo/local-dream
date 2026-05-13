@@ -110,6 +110,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
@@ -127,6 +130,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
@@ -1612,72 +1617,75 @@ fun ModelRunScreen(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 // verticalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                Text(
-                                                    stringResource(R.string.scheduler),
-                                                    style = MaterialTheme.typography.bodyMedium
+                                                // Split scheduler id into base + Karras flag so the UI
+                                                // can offer one base chip per family plus a single
+                                                // Karras switch, instead of listing every combination.
+                                                val baseId = scheduler.removeSuffix("_karras")
+                                                val karras = scheduler.endsWith("_karras")
+                                                val karrasSupported = baseId != "lcm"
+                                                val baseOptions = listOf(
+                                                    "dpm" to "DPM++ 2M",
+                                                    "dpm_sde" to "DPM++ 2M SDE",
+                                                    "euler_a" to "Euler A",
+                                                    "euler" to "Euler",
+                                                    "lcm" to "LCM",
                                                 )
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                ) {
+                                                    Text(
+                                                        stringResource(R.string.scheduler),
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        modifier = Modifier.weight(1f),
+                                                    )
+                                                    Text(
+                                                        "Karras",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        modifier = Modifier
+                                                            .padding(end = 8.dp)
+                                                            .alpha(if (karrasSupported) 1f else 0.4f),
+                                                    )
+                                                    CompositionLocalProvider(
+                                                        LocalMinimumInteractiveComponentSize provides Dp.Unspecified
+                                                    ) {
+                                                        Switch(
+                                                            checked = karras && karrasSupported,
+                                                            enabled = karrasSupported,
+                                                            onCheckedChange = { enable ->
+                                                                scheduler = if (enable) {
+                                                                    "${baseId}_karras"
+                                                                } else {
+                                                                    baseId
+                                                                }
+                                                                saveAllFields()
+                                                            },
+                                                            modifier = Modifier.scale(0.8f),
+                                                        )
+                                                    }
+                                                }
                                                 Row(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .horizontalScroll(rememberScrollState()),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    FilterChip(
-                                                        selected = scheduler == "dpm",
-                                                        onClick = {
-                                                            scheduler = "dpm"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("DPM++ 2M") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "dpm_karras",
-                                                        onClick = {
-                                                            scheduler = "dpm_karras"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("DPM++ 2M Karras") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "euler_a",
-                                                        onClick = {
-                                                            scheduler = "euler_a"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("Euler A") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "euler_a_karras",
-                                                        onClick = {
-                                                            scheduler = "euler_a_karras"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("Euler A Karras") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "lcm",
-                                                        onClick = {
-                                                            scheduler = "lcm"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("LCM") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "euler",
-                                                        onClick = {
-                                                            scheduler = "euler"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("Euler") }
-                                                    )
-                                                    FilterChip(
-                                                        selected = scheduler == "euler_karras",
-                                                        onClick = {
-                                                            scheduler = "euler_karras"
-                                                            saveAllFields()
-                                                        },
-                                                        label = { Text("Euler Karras") }
-                                                    )
+                                                    baseOptions.forEach { (id, label) ->
+                                                        FilterChip(
+                                                            selected = baseId == id,
+                                                            onClick = {
+                                                                val nextKarras =
+                                                                    karras && id != "lcm"
+                                                                scheduler = if (nextKarras) {
+                                                                    "${id}_karras"
+                                                                } else {
+                                                                    id
+                                                                }
+                                                                saveAllFields()
+                                                            },
+                                                            label = { Text(label) }
+                                                        )
+                                                    }
                                                 }
                                             }
 
@@ -2815,6 +2823,8 @@ fun ModelRunScreen(
                                             "lcm" -> "LCM"
                                             "euler" -> "Euler"
                                             "euler_karras" -> "Euler Karras"
+                                            "dpm_sde" -> "DPM++ 2M SDE"
+                                            "dpm_sde_karras" -> "DPM++ 2M SDE Karras"
                                             else -> generationParams?.scheduler ?: "DPM++ 2M"
                                         }
                                     }",
@@ -4003,6 +4013,8 @@ fun ModelRunScreen(
                                         "lcm" -> "LCM"
                                         "euler" -> "Euler"
                                         "euler_karras" -> "Euler Karras"
+                                        "dpm_sde" -> "DPM++ 2M SDE"
+                                        "dpm_sde_karras" -> "DPM++ 2M SDE Karras"
                                         else -> params.scheduler
                                     }
                                 }",
@@ -4459,6 +4471,8 @@ fun ModelRunScreen(
                         "lcm" -> "LCM"
                         "euler" -> "Euler"
                         "euler_karras" -> "Euler Karras"
+                        "dpm_sde" -> "DPM++ 2M SDE"
+                        "dpm_sde_karras" -> "DPM++ 2M SDE Karras"
                         else -> source.scheduler
                     }
 
