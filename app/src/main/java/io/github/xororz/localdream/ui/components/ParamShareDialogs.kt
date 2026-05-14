@@ -198,7 +198,7 @@ fun ImportParametersDialog(
     clearClipboardInitial: Boolean,
     onClearClipboardChanged: (Boolean) -> Unit,
     onApply: (selected: Set<ParamShareField>, clearClipboard: Boolean) -> Unit,
-    onDismiss: () -> Unit,
+    onDismiss: (clearClipboard: Boolean) -> Unit,
 ) {
     val available = remember(imported) { imported.availableFields().toList() }
     val selected = remember(imported) {
@@ -209,7 +209,7 @@ fun ImportParametersDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { onDismiss(clearClipboard) },
         title = { Text(stringResource(R.string.import_params_title)) },
         text = {
             Column(
@@ -268,7 +268,7 @@ fun ImportParametersDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = { onDismiss(clearClipboard) }) {
                 Text(stringResource(R.string.cancel))
             }
         }

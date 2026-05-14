@@ -156,8 +156,8 @@
     <string name="share_field_mode">モード</string>
     <string name="import_params_title">共有されたパラメータを適用</string>
     <string name="import_params_hint">クリップボードから共有パラメータを検出しました。適用する項目を選択してください。</string>
-    <string name="import_clear_clipboard">適用後にクリップボードをクリア</string>
-    <string name="import_clear_clipboard_hint">適用が完了したら、クリップボードから共有内容を削除します。</string>
+    <string name="import_clear_clipboard">閉じた後にクリップボードをクリア</string>
+    <string name="import_clear_clipboard_hint">適用またはキャンセルでダイアログを閉じた後、クリップボードから共有内容を削除します。</string>
     <string name="import_apply">適用</string>
     <string name="import_applied">パラメータを適用しました</string>
     <string name="error_download_failed">ダウンロード失敗: %s</string>

@@ -4523,6 +4523,18 @@ fun ModelRunScreen(
 
     // Import shared parameters dialog
     pendingImport?.let { imported ->
+        val clearClipboardAction = {
+            val clipboard =
+                context.getSystemService(Context.CLIPBOARD_SERVICE)
+                        as? ClipboardManager
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    clipboard?.clearPrimaryClip()
+                } else {
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("", ""))
+                }
+            }
+        }
         ImportParametersDialog(
             imported = imported,
             clearClipboardInitial = shareClearClipboardOnImport,
@@ -4564,16 +4576,7 @@ fun ModelRunScreen(
                 }
                 saveAllFields()
                 if (clearClipboard) {
-                    val clipboard =
-                        context.getSystemService(Context.CLIPBOARD_SERVICE)
-                                as? ClipboardManager
-                    runCatching {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            clipboard?.clearPrimaryClip()
-                        } else {
-                            clipboard?.setPrimaryClip(ClipData.newPlainText("", ""))
-                        }
-                    }
+                    clearClipboardAction()
                 }
                 pendingImport = null
                 Toast.makeText(
@@ -4582,7 +4585,12 @@ fun ModelRunScreen(
                     Toast.LENGTH_SHORT
                 ).show()
             },
-            onDismiss = { pendingImport = null }
+            onDismiss = { clearClipboard ->
+                if (clearClipboard) {
+                    clearClipboardAction()
+                }
+                pendingImport = null
+            }
         )
     }
 }

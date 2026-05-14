@@ -170,8 +170,8 @@
     <string name="share_field_mode">模式</string>
     <string name="import_params_title">应用分享的参数</string>
     <string name="import_params_hint">在剪贴板中检测到分享的参数，请选择要应用的字段。</string>
-    <string name="import_clear_clipboard">应用后清除剪贴板</string>
-    <string name="import_clear_clipboard_hint">应用完成后从剪贴板中清除分享内容。</string>
+    <string name="import_clear_clipboard">关闭后清除剪贴板</string>
+    <string name="import_clear_clipboard_hint">关闭对话框后（无论应用还是取消）从剪贴板中清除分享内容。</string>
     <string name="import_apply">应用</string>
     <string name="import_applied">参数已应用</string>
 

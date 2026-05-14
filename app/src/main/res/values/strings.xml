@@ -170,8 +170,8 @@
     <string name="share_field_mode">Mode</string>
     <string name="import_params_title">Apply Shared Parameters</string>
     <string name="import_params_hint">Shared parameters were found on the clipboard. Choose which fields to apply.</string>
-    <string name="import_clear_clipboard">Clear clipboard after apply</string>
-    <string name="import_clear_clipboard_hint">Remove the shared payload from the clipboard once parameters are applied.</string>
+    <string name="import_clear_clipboard">Clear clipboard after closing</string>
+    <string name="import_clear_clipboard_hint">Remove the shared payload from the clipboard after closing this dialog, whether you apply or cancel.</string>
     <string name="import_apply">Apply</string>
     <string name="import_applied">Parameters applied</string>
 
