@@ -131,6 +131,7 @@
     <string name="result_params_2">サイズ: %s×%s / 処理時間: %s / %s</string>
     <string name="params_detail">パラメータの詳細</string>
     <string name="basic_params">基本パラメータ</string>
+    <string name="basic_model">モデル: %s</string>
     <string name="basic_step">ステップ数: %d</string>
     <string name="basic_size">サイズ: %dx%d</string>
     <string name="basic_seed">シード: %s</string>

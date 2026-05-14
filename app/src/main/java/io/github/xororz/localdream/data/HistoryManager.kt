@@ -18,6 +18,7 @@ import java.io.FileOutputStream
 @Immutable
 data class HistoryItem(
     val id: Long,
+    val modelId: String,
     val imageFile: File,
     val params: GenerationParameters,
     val timestamp: Long,
@@ -30,6 +31,7 @@ data class HistoryItem(
             val mode = GenerationMode.fromString(e.mode)
             return HistoryItem(
                 id = e.id,
+                modelId = e.modelId,
                 imageFile = imageFile,
                 timestamp = e.timestamp,
                 mode = mode,

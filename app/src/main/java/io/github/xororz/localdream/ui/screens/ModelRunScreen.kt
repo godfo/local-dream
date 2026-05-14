@@ -362,6 +362,7 @@ fun ModelRunScreen(
     var intermediateBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var imageVersion by remember { mutableStateOf(0) }
     var generationParams by remember { mutableStateOf<GenerationParameters?>(null) }
+    var generationParamsModelId by remember { mutableStateOf(modelId) }
 
     // History state
     var historyFilter by remember(modelId) {
@@ -1191,6 +1192,7 @@ fun ModelRunScreen(
 
                     currentBitmap = state.bitmap
                     generationParams = newParams
+                    generationParamsModelId = modelId
                     imageVersion += 1
 
                     snapshotIsInpaintMode = isInpaintMode
@@ -2601,6 +2603,7 @@ fun ModelRunScreen(
                                                     if (bitmap != null) {
                                                         currentBitmap = bitmap
                                                         generationParams = item.params
+                                                        generationParamsModelId = item.modelId
                                                         currentDisplayedHistoryId = item.id
                                                         imageVersion++
                                                     }
@@ -2779,6 +2782,10 @@ fun ModelRunScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    stringResource(R.string.basic_model, generationParamsModelId),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                                 Text(
                                     stringResource(
                                         R.string.basic_step,
@@ -3641,6 +3648,7 @@ fun ModelRunScreen(
                                                 withContext(Dispatchers.Main) {
                                                     currentBitmap = upscaledBitmap
                                                     generationParams = updatedParams
+                                                    generationParamsModelId = modelId
                                                     currentDisplayedHistoryId = saved.id
                                                     imageVersion++
                                                 }
@@ -3972,6 +3980,13 @@ fun ModelRunScreen(
                         modifier = Modifier.verticalScroll(rememberScrollState())
                     ) {
                         Column {
+                            Text(
+                                stringResource(
+                                    R.string.basic_model,
+                                    selectedHistoryItem?.modelId ?: ""
+                                ),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                             Text(
                                 "Steps: ${params.steps}",
                                 style = MaterialTheme.typography.bodyMedium

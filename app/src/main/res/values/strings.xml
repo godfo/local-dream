@@ -145,6 +145,7 @@
     <string name="result_params_2">size: %sx%s / time: %s / %s</string>
     <string name="params_detail">Details</string>
     <string name="basic_params">Basic</string>
+    <string name="basic_model">Model: %s</string>
     <string name="basic_step">Steps: %d</string>
     <string name="basic_size">Size: %dx%d</string>
     <string name="basic_seed">Seed: %s</string>
